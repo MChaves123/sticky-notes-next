@@ -1,29 +1,53 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { supabase } from "../lib/supabaseClient.js";
+
+const NOTE_ID = "my-note"; // one shared note for now
 
 export default function Home() {
-  // Load once from Local Storage when the page opens.
-  // Local Storage is a small memory inside your browser.
   const [text, setText] = useState("");
-
-  useEffect(() => {
-    const saved = typeof window !== "undefined" ? localStorage.getItem("note") : "";
-    if (saved) setText(saved);
-  }, []);
-
   const [status, setStatus] = useState("");
 
-  function saveNote() {
-    localStorage.setItem("note", text);
-    setStatus(`Saved at ${new Date().toLocaleTimeString()}.`);
+  // Load once from Supabase
+  useEffect(() => {
+    async function load() {
+      const { data, error } = await supabase
+        .from("notes")
+        .select("*")
+        .eq("id", NOTE_ID)
+        .maybeSingle();
+
+      if (error) {
+        setStatus("Could not load note.");
+        return;
+      }
+      if (data) setText(data.content ?? "");
+    }
+    load();
+  }, []);
+
+  // Save to Supabase (insert or update)
+  async function saveNote() {
+    const { error } = await supabase
+      .from("notes")
+      .upsert({
+        id: NOTE_ID,
+        content: text,
+        updated_at: new Date().toISOString(),
+      });
+
+    setStatus(error ? "Save failed." : `Saved at ${new Date().toLocaleTimeString()}.`);
   }
 
-  function clearNote() {
-    localStorage.removeItem("note");
-    setText("");
-    setStatus("Note cleared.");
+  // Clear the note from Supabase
+  async function clearNote() {
+    const { error } = await supabase.from("notes").delete().eq("id", NOTE_ID);
+    if (!error) {
+      setText("");
+      setStatus("Note cleared.");
+    }
   }
 
   return (
